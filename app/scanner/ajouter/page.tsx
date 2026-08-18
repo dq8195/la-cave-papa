@@ -23,7 +23,7 @@ export default function AjouterPage() {
     try {
       const lecteur = new BrowserMultiFormatReader();
 
-      const controls = await lecteur.decodeFromVideoDevice(
+const controls = await lecteur.decodeFromVideoDevice(
         undefined,
         videoRef.current!,
         (result) => {
