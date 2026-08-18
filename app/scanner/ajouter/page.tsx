@@ -68,11 +68,15 @@ export default function AjouterPage() {
         <div>
           <video
             ref={videoRef}
-            style={{
-              width: "100%",
-              maxWidth: "500px",
-              marginTop: "20px",
-            }}
+             autoPlay
+             muted
+             playsInline
+             style={{
+               width: "100%",
+               maxWidth: "500px",
+               marginTop: "20px",
+               backgroundColor: "black",
+             }}
           />
 
           <br />
