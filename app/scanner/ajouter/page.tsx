@@ -15,12 +15,12 @@ export default function AjouterPage() {
   const [scannerActif, setScannerActif] = useState(false);
   const [codeBarres, setCodeBarres] = useState("");
   const [erreur, setErreur] = useState("");
-
+  const [quantite, setQuantite] = useState(1);
   async function ouvrirScanner() {
     setErreur("");
     setCodeBarres("");
     setScannerActif(true);
-
+    setQuantite(1);
     // On laisse React créer l'élément <video>
     await new Promise((resolve) => setTimeout(resolve, 100));
 
@@ -238,36 +238,110 @@ export default function AjouterPage() {
         )}
 
         {codeBarres && (
-          <div
-            style={{
-              marginTop: "30px",
-              textAlign: "center",
-            }}
-          >
-            <h2>Code-barres détecté</h2>
+  <div
+    style={{
+      marginTop: "30px",
+      textAlign: "center",
+    }}
+  >
+    <h2>Code-barres détecté</h2>
 
-            <p
-              style={{
-                fontSize: "22px",
-                fontWeight: "bold",
-              }}
-            >
-              {codeBarres}
-            </p>
+    <p
+      style={{
+        fontSize: "20px",
+        fontWeight: "bold",
+      }}
+    >
+      {codeBarres}
+    </p>
 
-            <button
-              type="button"
-              onClick={ouvrirScanner}
-              style={{
-                padding: "12px 20px",
-                fontSize: "16px",
-                cursor: "pointer",
-              }}
-            >
-              Scanner une autre bouteille
-            </button>
-          </div>
-        )}
+    <h3
+      style={{
+        marginTop: "30px",
+      }}
+    >
+      Nombre de bouteilles
+    </h3>
+
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        gap: "25px",
+        marginTop: "20px",
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => {
+          if (quantite > 1) {
+            setQuantite(quantite - 1);
+          }
+        }}
+        disabled={quantite === 1}
+        style={{
+          width: "55px",
+          height: "55px",
+          fontSize: "28px",
+          cursor: quantite === 1 ? "not-allowed" : "pointer",
+        }}
+      >
+        −
+      </button>
+
+      <span
+        style={{
+          fontSize: "36px",
+          fontWeight: "bold",
+          minWidth: "50px",
+        }}
+      >
+        {quantite}
+      </span>
+
+      <button
+        type="button"
+        onClick={() => setQuantite(quantite + 1)}
+        style={{
+          width: "55px",
+          height: "55px",
+          fontSize: "28px",
+          cursor: "pointer",
+        }}
+      >
+        +
+      </button>
+    </div>
+
+    <button
+      type="button"
+      style={{
+        marginTop: "30px",
+        padding: "14px 24px",
+        fontSize: "17px",
+        cursor: "pointer",
+      }}
+    >
+      Ajouter {quantite} {quantite === 1 ? "bouteille" : "bouteilles"}
+    </button>
+
+    <br />
+
+    <button
+      type="button"
+      onClick={ouvrirScanner}
+      style={{
+        marginTop: "20px",
+        padding: "10px 18px",
+        fontSize: "15px",
+        cursor: "pointer",
+      }}
+    >
+      Scanner une autre bouteille
+    </button>
+  </div>
+)}
 
         {erreur && (
           <div
