@@ -7,6 +7,8 @@ import {
   IScannerControls,
 } from "@zxing/browser";
 
+import { supabase } from "@/lib/supabase/client";
+
 export default function AjouterPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
@@ -14,19 +16,26 @@ export default function AjouterPage() {
 
   const [scannerActif, setScannerActif] = useState(false);
   const [codeBarres, setCodeBarres] = useState("");
-  const [erreur, setErreur] = useState("");
   const [quantite, setQuantite] = useState(1);
+
+  const [erreur, setErreur] = useState("");
+  const [message, setMessage] = useState("");
+  const [enregistrement, setEnregistrement] = useState(false);
+
   async function ouvrirScanner() {
     setErreur("");
+    setMessage("");
     setCodeBarres("");
-    setScannerActif(true);
     setQuantite(1);
-    // On laisse React créer l'élément <video>
+    setScannerActif(true);
+
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
-        throw new Error("La caméra n'est pas disponible sur ce navigateur.");
+        throw new Error(
+          "La caméra n'est pas disponible sur ce navigateur."
+        );
       }
 
       const video = videoRef.current;
@@ -35,7 +44,6 @@ export default function AjouterPage() {
         throw new Error("La zone vidéo n'est pas prête.");
       }
 
-      // 1. On ouvre nous-mêmes la caméra
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: {
@@ -53,12 +61,10 @@ export default function AjouterPage() {
 
       streamRef.current = stream;
 
-      // 2. On affiche le flux dans la vidéo
       video.srcObject = stream;
 
       await video.play();
 
-      // 3. On donne ce flux déjà ouvert à ZXing
       const lecteur = new BrowserMultiFormatReader();
 
       const controls = await lecteur.decodeFromStream(
@@ -108,6 +114,151 @@ export default function AjouterPage() {
     setScannerActif(false);
   }
 
+  function diminuerQuantite() {
+    if (quantite > 1) {
+      setQuantite((ancienneQuantite) => ancienneQuantite - 1);
+    }
+  }
+
+  function augmenterQuantite() {
+    setQuantite((ancienneQuantite) => ancienneQuantite + 1);
+  }
+
+  async function ajouterDansLaCave() {
+    if (!codeBarres) {
+      setErreur("Aucun code-barres n'a été détecté.");
+      return;
+    }
+
+    if (quantite < 1) {
+      setErreur("La quantité doit être supérieure à 0.");
+      return;
+    }
+
+    setEnregistrement(true);
+    setErreur("");
+    setMessage("");
+
+    try {
+      console.log("Ajout Supabase");
+      console.log("Code-barres :", codeBarres);
+      console.log("Quantité :", quantite);
+
+      const {
+        data: bouteilleExistante,
+        error: erreurLecture,
+      } = await supabase
+        .from("bouteilles")
+        .select("id, code_barres, quantite")
+        .eq("code_barres", codeBarres)
+        .maybeSingle();
+
+      if (erreurLecture) {
+        console.error("Erreur SELECT :", erreurLecture);
+
+        throw new Error(
+          `Erreur de lecture Supabase : ${erreurLecture.message}`
+        );
+      }
+
+      if (bouteilleExistante) {
+        const quantiteActuelle =
+          bouteilleExistante.quantite ?? 0;
+
+        const nouvelleQuantite =
+          quantiteActuelle + quantite;
+
+        const {
+          data: bouteilleModifiee,
+          error: erreurModification,
+        } = await supabase
+          .from("bouteilles")
+          .update({
+            quantite: nouvelleQuantite,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", bouteilleExistante.id)
+          .select("id, code_barres, quantite")
+          .single();
+
+        if (erreurModification) {
+          console.error(
+            "Erreur UPDATE :",
+            erreurModification
+          );
+
+          throw new Error(
+            `Erreur de modification Supabase : ${erreurModification.message}`
+          );
+        }
+
+        console.log(
+          "Bouteille modifiée :",
+          bouteilleModifiee
+        );
+
+        setMessage(
+          `${quantite} ${
+            quantite === 1
+              ? "bouteille ajoutée"
+              : "bouteilles ajoutées"
+          }. Stock total : ${nouvelleQuantite}.`
+        );
+      } else {
+        const {
+          data: nouvelleBouteille,
+          error: erreurInsertion,
+        } = await supabase
+          .from("bouteilles")
+          .insert({
+            code_barres: codeBarres,
+            quantite: quantite,
+          })
+          .select("id, code_barres, quantite")
+          .single();
+
+        if (erreurInsertion) {
+          console.error(
+            "Erreur INSERT :",
+            erreurInsertion
+          );
+
+          throw new Error(
+            `Erreur d'insertion Supabase : ${erreurInsertion.message}`
+          );
+        }
+
+        console.log(
+          "Nouvelle bouteille :",
+          nouvelleBouteille
+        );
+
+        setMessage(
+          `${quantite} ${
+            quantite === 1
+              ? "bouteille ajoutée"
+              : "bouteilles ajoutées"
+          } à la cave.`
+        );
+      }
+    } catch (error) {
+      console.error(
+        "Erreur complète Supabase :",
+        error
+      );
+
+      if (error instanceof Error) {
+        setErreur(error.message);
+      } else {
+        setErreur(
+          "Une erreur inconnue est survenue lors de l'enregistrement."
+        );
+      }
+    } finally {
+      setEnregistrement(false);
+    }
+  }
+
   return (
     <main
       style={{
@@ -139,7 +290,7 @@ export default function AjouterPage() {
           Scannez le code-barres de la bouteille.
         </p>
 
-        {!scannerActif && (
+        {!scannerActif && !codeBarres && (
           <div
             style={{
               display: "flex",
@@ -238,119 +389,146 @@ export default function AjouterPage() {
         )}
 
         {codeBarres && (
-  <div
-    style={{
-      marginTop: "30px",
-      textAlign: "center",
-    }}
-  >
-    <h2>Code-barres détecté</h2>
+          <div
+            style={{
+              marginTop: "30px",
+              textAlign: "center",
+            }}
+          >
+            <h2>Code-barres détecté</h2>
 
-    <p
-      style={{
-        fontSize: "20px",
-        fontWeight: "bold",
-      }}
-    >
-      {codeBarres}
-    </p>
+            <p
+              style={{
+                fontSize: "20px",
+                fontWeight: "bold",
+              }}
+            >
+              {codeBarres}
+            </p>
 
-    <h3
-      style={{
-        marginTop: "30px",
-      }}
-    >
-      Nombre de bouteilles
-    </h3>
+            <h3
+              style={{
+                marginTop: "30px",
+              }}
+            >
+              Nombre de bouteilles
+            </h3>
 
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        gap: "25px",
-        marginTop: "20px",
-      }}
-    >
-      <button
-        type="button"
-        onClick={() => {
-          if (quantite > 1) {
-            setQuantite(quantite - 1);
-          }
-        }}
-        disabled={quantite === 1}
-        style={{
-          width: "55px",
-          height: "55px",
-          fontSize: "28px",
-          cursor: quantite === 1 ? "not-allowed" : "pointer",
-        }}
-      >
-        −
-      </button>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                gap: "25px",
+                marginTop: "20px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={diminuerQuantite}
+                disabled={quantite === 1}
+                style={{
+                  width: "55px",
+                  height: "55px",
+                  fontSize: "28px",
+                  cursor:
+                    quantite === 1
+                      ? "not-allowed"
+                      : "pointer",
+                }}
+              >
+                −
+              </button>
 
-      <span
-        style={{
-          fontSize: "36px",
-          fontWeight: "bold",
-          minWidth: "50px",
-        }}
-      >
-        {quantite}
-      </span>
+              <span
+                style={{
+                  fontSize: "36px",
+                  fontWeight: "bold",
+                  minWidth: "50px",
+                }}
+              >
+                {quantite}
+              </span>
 
-      <button
-        type="button"
-        onClick={() => setQuantite(quantite + 1)}
-        style={{
-          width: "55px",
-          height: "55px",
-          fontSize: "28px",
-          cursor: "pointer",
-        }}
-      >
-        +
-      </button>
-    </div>
+              <button
+                type="button"
+                onClick={augmenterQuantite}
+                style={{
+                  width: "55px",
+                  height: "55px",
+                  fontSize: "28px",
+                  cursor: "pointer",
+                }}
+              >
+                +
+              </button>
+            </div>
 
-    <button
-      type="button"
-      style={{
-        marginTop: "30px",
-        padding: "14px 24px",
-        fontSize: "17px",
-        cursor: "pointer",
-      }}
-    >
-      Ajouter {quantite} {quantite === 1 ? "bouteille" : "bouteilles"}
-    </button>
+            <button
+              type="button"
+              onClick={ajouterDansLaCave}
+              disabled={enregistrement}
+              style={{
+                marginTop: "30px",
+                padding: "14px 24px",
+                fontSize: "17px",
+                cursor: enregistrement
+                  ? "not-allowed"
+                  : "pointer",
+              }}
+            >
+              {enregistrement
+                ? "Enregistrement..."
+                : `Ajouter ${quantite} ${
+                    quantite === 1
+                      ? "bouteille"
+                      : "bouteilles"
+                  }`}
+            </button>
 
-    <br />
+            {message && (
+              <div
+                style={{
+                  marginTop: "24px",
+                  padding: "15px",
+                  border: "1px solid #ccc",
+                  borderRadius: "8px",
+                }}
+              >
+                <strong>{message}</strong>
+              </div>
+            )}
 
-    <button
-      type="button"
-      onClick={ouvrirScanner}
-      style={{
-        marginTop: "20px",
-        padding: "10px 18px",
-        fontSize: "15px",
-        cursor: "pointer",
-      }}
-    >
-      Scanner une autre bouteille
-    </button>
-  </div>
-)}
+            <br />
+
+            <button
+              type="button"
+              onClick={ouvrirScanner}
+              disabled={enregistrement}
+              style={{
+                marginTop: "20px",
+                padding: "10px 18px",
+                fontSize: "15px",
+                cursor: "pointer",
+              }}
+            >
+              Scanner une autre bouteille
+            </button>
+          </div>
+        )}
 
         {erreur && (
           <div
             style={{
               marginTop: "24px",
+              padding: "15px",
               textAlign: "center",
+              border: "1px solid #ccc",
+              borderRadius: "8px",
             }}
           >
             <h2>Erreur</h2>
+
             <p>{erreur}</p>
           </div>
         )}
